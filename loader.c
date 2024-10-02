@@ -92,7 +92,7 @@ int parse_elf(uint8_t* file) {
 	Elf64_Shdr* strtab = shdr + ehdr->e_shstrndx;
 	const char* section_names = (char*)(file + strtab->sh_offset);
 	
-	Elf64_Shdr *text = NULL, *rela_text = NULL, *symtab = NULL;
+	Elf64_Shdr *text = NULL, *rela_text = NULL, *symtab = NULL, *rela_data = NULL, *data = NULL;
 	for (uint64_t i = 1; i <= ehdr->e_shnum; i++) { // We skip the first index as it is a null entry
 		Elf64_Shdr* t = shdr + i;
 		if (!strcmp(section_names + t->sh_name, ".text")) // strcmp returns 0 if true
@@ -101,9 +101,13 @@ int parse_elf(uint8_t* file) {
 			rela_text = t;
 		else if (!strcmp(section_names + t->sh_name, ".symtab"))
 			symtab = t;
+		else if (!strcmp(section_names + t->sh_name, ".rela.data"))
+			rela_data = t;
+		else if (!strcmp(section_names + t->sh_name, ".data"))
+			data = t;
 	}
 
-	if (!text || !rela_text || !symtab) {
+	if (!text || !rela_text || !symtab || !rela_data || !data) {
 		warn("Object file does not have required section headers\n");
 		return -1;
 	}
@@ -113,7 +117,10 @@ int parse_elf(uint8_t* file) {
 	if (module_code == MAP_FAILED) 
 		error("Failed to allocate memory for module code\n");
 	memcpy(module_code, file + text->sh_offset, text->sh_size);
-
+	Elf64_Rela* rel = (Elf64_Rela*) (file + rela_text->sh_offset);
+	for (uint64_t i = 0; i < (rela_text->sh_size / sizeof(Elf64_Rela)); i++, rel++) {
+		printf("%ld\n", rel->r_addend);
+	}
 	return 0;
 }
 
