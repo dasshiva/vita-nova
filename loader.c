@@ -12,6 +12,14 @@
 #define VERSION "0.0.1"
 #define error(...) { printf(__VA_ARGS__); perror("Cause"); exit(1); }
 #define warn(...) { printf(__VA_ARGS__); }
+
+int module_register() {
+	return 0;
+}
+
+#define DYNSYM_LEN 1
+const char* dynamic_symbols[] = { "module_register" };
+const void* symbol_address[] =  { module_register };
 void print_usage() {
 	static const char* help = 
 		"Usage : loader [module]\n"
@@ -117,11 +125,25 @@ int parse_elf(uint8_t* file) {
 	if (module_code == MAP_FAILED) 
 		error("Failed to allocate memory for module code\n");
 	memcpy(module_code, file + text->sh_offset, text->sh_size);
+	Elf64_Sym* sym = (Elf64_Sym*) (file + symtab->sh_offset);
 	Elf64_Rela* rel = (Elf64_Rela*) (file + rela_text->sh_offset);
 	for (uint64_t i = 0; i < (rela_text->sh_size / sizeof(Elf64_Rela)); i++, rel++) {
-		printf("%ld\n", rel->r_addend);
+		uint64_t* rel_offset = module_code + rel->r_offset;
+		Elf64_Sym* rel_sym = sym + ELF64_R_SYM(rel->r_info);
+		//printf("%s", section_names + rel_sym->st_name);
+		if (rel_sym->st_shndx == SHN_UNDEF) {
+			for (int i = 0; i < DYNSYM_LEN; i++) {
+				if (!strcmp(dynamic_symbols[i], section_names + rel_sym->st_name)) {
+					*rel_offset = symbol_address[i];
+					break;
+				}
+			}
+		}
 	}
-	return 0;
+	int (*module_main)() = module_code;
+        if (module_main()) 
+		return 1;
+	return -1;
 }
 
 int main(int argc, const char* argv[]) {
